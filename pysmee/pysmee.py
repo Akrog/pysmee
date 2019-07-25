@@ -310,6 +310,8 @@ class Main(object):
         LOG.info('Sending contents of %s' % args.filename)
         with open(args.filename, 'r') as f:
             for i, line in enumerate(f.readlines()):
-                LOG.info('Sending line %s' % (i + 1))
-                LOG.debug('Line: %s' % line)
-                send_data(args.source, line)
+                line = line.strip()
+                if line:
+                    LOG.info('Sending line %s' % (i + 1))
+                    LOG.debug('Line: %s' % line)
+                    send_data(args.source, line)
