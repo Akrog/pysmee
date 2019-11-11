@@ -24,7 +24,7 @@ def decode_data(data):
     json_data = json.loads(data, object_pairs_hook=collections.OrderedDict)
     body = json.dumps(json_data['body'], separators=(',', ':'))
     headers = {k: str(v) for k, v in json_data.items()
-               if k not in ('query', 'body')}
+               if k not in ('query', 'body', 'host')}
     return headers, body
 
 
