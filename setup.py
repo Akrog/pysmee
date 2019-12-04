@@ -21,7 +21,7 @@ test_requirements = [
 
 setup(
     name='pysmee',
-    version='0.1.0',
+    version='0.1.1',
     description=("Command line client for smee.io's webhook payload delivery "
                  "service"),
     long_description=readme + '\n\n' + history,
