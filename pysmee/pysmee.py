@@ -12,11 +12,21 @@ import sseclient
 
 import pysmee
 
-
 EXIT = object()
 NUM_WORKERS = 5
 RECONNECT_EVERY = 60 * 60  # Default is every hour
 LOG = None
+
+
+def decode_gitlab_token_header(headers, *_):
+    if (isinstance(headers, dict) and 'x-gitlab-token' in headers.keys() and
+            'token' not in headers.keys()):
+        headers.update({'token': headers['x-gitlab-token']})
+
+
+filters = [
+    decode_gitlab_token_header,
+]
 
 
 def decode_data(data):
@@ -25,17 +35,20 @@ def decode_data(data):
     body = json.dumps(json_data['body'], separators=(',', ':'))
     headers = {k: str(v) for k, v in json_data.items()
                if k not in ('query', 'body', 'host')}
+    for filter_func in filters:
+        filter_func(headers, body, data)
     return headers, body
 
 
-def send_data(where, data, do_send=True):
+def send_data(where, data, do_send=True, verify=True):
     headers, body = decode_data(data)
     # If it's one of my heartbeats
     logger = LOG.debug if do_send else LOG.info
     logger('Headers: %s\nBody: %s' % (headers, body))
     if do_send:
         try:
-            r = requests.post(where, data=body, headers=headers)
+            r = requests.post(where, data=body, headers=headers,
+                              verify=verify)
             LOG.info('POST %s - %s' % (where, r.status_code))
         except Exception as exc:
             LOG.error('Error sending message to %s: %s' %
@@ -75,11 +88,12 @@ class Worker(threading.Thread):
     queue = six.moves.queue.Queue(maxsize=-1)
     current_workers = []
 
-    def __init__(self, source, save, url):
+    def __init__(self, source, save, url, verify):
         super(Worker, self).__init__()
         self.source = source
         self.save = save
         self.url = url
+        self.verify = verify
         self.start()
         self.current_workers.append(self)
 
@@ -103,7 +117,8 @@ class Worker(threading.Thread):
         elif msg.event == 'message':
             self.save(msg.data)
             # Forward if we have url, show if not
-            send_data(self.url, msg.data, do_send=bool(self.url))
+            send_data(self.url, msg.data, do_send=bool(self.url),
+                      verify=self.verify)
 
         elif msg.event == 'ready':
             LOG.verbose('Connected to %s' % self.source)
@@ -207,6 +222,9 @@ class Parser(BaseParser):
                                 type=int,
                                 help=('Number of reception workers. '
                                       'Default: %s' % NUM_WORKERS))
+            parser.add_argument('--no-cert-verify', dest='verify', default=True,
+                                action='store_false',
+                                help=('Do not verify SSL Certificate.'))
         return parser
 
     def __init__(self, sender, receiver):
@@ -290,7 +308,7 @@ class Main(object):
 
         self.saver = Saver(args.filename)
         for _ in range(args.workers):
-            Worker(args.source, self.saver.save, args.target)
+            Worker(args.source, self.saver.save, args.target, args.verify)
         LOG.debug('Started %s workers' % args.workers)
         signal.signal(signal.SIGINT, self.get_signal_handler())
 
